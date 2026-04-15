@@ -32,6 +32,7 @@ export default function POSPage() {
       .order('nom')
 
     setProduits(data || [])
+    console.log('DATA:', JSON.stringify(data?.[0]))console.log('Premier produit:', data?.[0])
     const cats = ['Tous', ...new Set((data || []).map(p => p.categorie).filter(Boolean))]
     setCategories(cats)
     setLoading(false)
@@ -62,7 +63,7 @@ export default function POSPage() {
     )
   }
 
-  const total = panier.reduce((s, i) => s + i.prix_vente * i.quantite, 0)
+  const total = panier.reduce((s, i) => s + i.prix * i.quantite, 0)
 
   const encaisser = async () => {
     if (panier.length === 0) return
@@ -80,14 +81,14 @@ export default function POSPage() {
           produit_id: i.id,
           nom_produit: i.nom,
           quantite: i.quantite,
-          prix_unitaire: i.prix_vente,
-          total: i.prix_vente * i.quantite
+          prix_unitaire: i.prix,
+          total: i.prix * i.quantite
         }))
       )
 
       for (const item of panier) {
         await supabase.from('produits')
-          .update({ quantite: item.quantite_stock - item.quantite })
+          .update({ quantite: produits.find(p => p.id === item.id)?.quantite - item.quantite })
           .eq('id', item.id)
       }
 
@@ -158,7 +159,7 @@ export default function POSPage() {
             >
               <div style={{ fontSize: 9, color: '#94A3B8', fontWeight: 500, textTransform: 'uppercase' }}>{p.marque}</div>
               <div style={{ fontSize: 12, fontWeight: 600, color: '#1E293B', margin: '2px 0', lineHeight: 1.3 }}>{p.nom}</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#1D4ED8' }}>{p.prix_vente} MAD</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#1D4ED8' }}>{p.prix} MAD</div>
               <div style={{ fontSize: 10, color: Number(p.quantite) <= Number(p.alerte_stock) ? '#EF4444' : '#94A3B8', marginTop: 2 }}>
                 Stock: {p.quantite} {Number(p.quantite) <= Number(p.alerte_stock) ? '⚠️' : ''}
               </div>
@@ -183,13 +184,13 @@ export default function POSPage() {
             <div key={item.id} style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ fontSize: 11, color: '#CBD5E1', flex: 1 }}>{item.nom}</div>
-                <div style={{ fontSize: 12, color: '#60A5FA', fontWeight: 600 }}>{(item.prix_vente * item.quantite).toFixed(2)} MAD</div>
+                <div style={{ fontSize: 12, color: '#60A5FA', fontWeight: 600 }}>{(item.prix * item.quantite).toFixed(2)} MAD</div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
                 <button onClick={() => modifierQte(item.id, -1)} style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14 }}>−</button>
                 <span style={{ fontSize: 13, color: 'white', fontWeight: 600, minWidth: 20, textAlign: 'center' }}>{item.quantite}</span>
                 <button onClick={() => modifierQte(item.id, 1)} style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14 }}>+</button>
-                <span style={{ fontSize: 11, color: '#64748B' }}>{item.prix_vente} MAD/u</span>
+                <span style={{ fontSize: 11, color: '#64748B' }}>{item.prix} MAD/u</span>
               </div>
             </div>
           ))}
