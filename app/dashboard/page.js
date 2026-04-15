@@ -106,12 +106,12 @@ export default function Dashboard() {
       </nav>
 
       {/* Banner image */}
-      <div className="relative h-32 overflow-hidden">
+      <div className="relative h-48 overflow-hidden">
         <img
           src="https://images.unsplash.com/photo-1553413077-190dd305871c?w=1200&q=80"
           alt="warehouse"
           className="w-full h-full object-cover"
-          style={{ filter: 'brightness(0.55)' }}
+          style={{ filter: 'brightness(0.4)' }}
         />
         <div className="absolute inset-0 flex flex-col justify-center px-5">
           <h1 className="text-2xl font-bold text-white">Tableau de bord</h1>
@@ -119,10 +119,30 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-4 py-5">
+      <div className="max-w-5xl mx-auto px-4 py-5">
+
+        {/* Categories slider */}
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-hide">
+          {[
+            { label: 'Produits', icon: '📦', href: '/produits' },
+            { label: 'Factures', icon: '🧾', href: '/factures' },
+            { label: 'Point de Vente', icon: '🛒', href: '/pos' },
+            { label: 'Clients', icon: '👥', href: '/clients' },
+            { label: 'Paramètres', icon: '⚙️', href: '/settings' },
+          ].map(cat => (
+            <button
+              key={cat.label}
+              onClick={() => router.push(cat.href)}
+              className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-slate-200 whitespace-nowrap text-sm font-medium text-slate-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition shadow-sm flex-shrink-0"
+            >
+              <span>{cat.icon}</span>
+              <span>{cat.label}</span>
+            </button>
+          ))}
+        </div>
 
         {/* Stats grid */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
             <div className="text-xl mb-1">👥</div>
             <div className="text-2xl font-bold text-blue-700">{loading ? '...' : stats.clients}</div>
