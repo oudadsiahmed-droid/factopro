@@ -106,10 +106,12 @@ const [alertes, setAlertes] = useState([])
           </div>
           <span className="font-bold text-gray-900 text-lg">FactoPro</span>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-500">{user?.email}</span>
-          <button onClick={handleLogout} className="text-sm text-red-500 hover:text-red-700">Déconnexion</button>
-        </div>
+      <div className="flex flex-col items-end">
+            <span className="text-xs text-gray-500 hidden sm:block truncate max-w-[160px]">{user?.email}</span>
+            <button onClick={handleLogout} className="text-sm text-red-500 hover:text-red-700 font-medium">
+              Déconnexion
+            </button>
+          </div>
       </nav>
 
       <div className="max-w-6xl mx-auto px-6 py-8">
