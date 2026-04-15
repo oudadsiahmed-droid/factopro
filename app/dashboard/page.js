@@ -1,15 +1,16 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase'
+
+const supabase = createClient()
 
 export default function Dashboard() {
   const [user, setUser] = useState(null)
   const [stats, setStats] = useState({ clients: 0, factures: 0, total_ttc: 0, en_attente: 0 })
   const [ventes, setVentes] = useState({ aujourd_hui: 0, semaine: 0, mois: 0, ca_jour: 0, ca_mois: 0, top_produit: '' })
-const [alertes, setAlertes] = useState([])
+  const [alertes, setAlertes] = useState([])
   const [loading, setLoading] = useState(true)
-  const supabase = createClient()
   const router = useRouter()
 
   useEffect(() => { loadData() }, [])
@@ -61,34 +62,15 @@ const [alertes, setAlertes] = useState([])
       ca_mois: ca_mois.toFixed(2),
       top_produit: top ? `${top[0]} (${top[1]}x)` : '—'
     })
- 
+
+    // Alertes stock
     const { data: allProduits } = await supabase
       .from('produits')
       .select('nom, quantite, alerte_stock, unite')
       .eq('user_id', user.id)
+
     const alertesList = (allProduits || []).filter(p => Number(p.quantite) <= Number(p.alerte_stock))
-    console.log('Produits:', allProduits?.length, 'Alertes:', alertesList.length)
     setAlertes(alertesList)
-    
-    // Notifications browser
-    if (alertesList.length > 0) {
-      if (Notification.permission === 'granted') {
-        new Notification('⚠️ Alertes Stock!', {
-          body: alertesList.map(p => `${p.nom}: ${p.quantite} ${p.unite} ghir bqyin`).join('\n'),
-          icon: '/favicon.ico'
-        })
-      } else if (Notification.permission !== 'denied') {
-        Notification.requestPermission().then(permission => {
-          if (permission === 'granted') {
-            new Notification('⚠️ Alertes Stock!', {
-              body: alertesList.map(p => `${p.nom}: ${p.quantite} ${p.unite} ghir bqyin`).join('\n'),
-              icon: '/favicon.ico'
-            })
-          }
-        })
-      }
-    }
-    
     setLoading(false)
   }
 
@@ -97,81 +79,113 @@ const [alertes, setAlertes] = useState([])
     router.push('/')
   }
 
+  if (loading) return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+        <p className="text-slate-400 text-sm">Chargement...</p>
+      </div>
+    </div>
+  )
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">F</span>
-          </div>
-          <span className="font-bold text-gray-900 text-lg">FactoPro</span>
+    <div className="min-h-screen bg-slate-50">
+
+      {/* Navbar */}
+      <nav className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center text-white font-bold text-sm">F</div>
+          <span className="font-semibold text-gray-900">FactoPro</span>
         </div>
-      <div className="flex flex-col items-end">
-            <span className="text-xs text-gray-500 hidden sm:block truncate max-w-[160px]">{user?.email}</span>
-            <button onClick={handleLogout} className="text-sm text-red-500 hover:text-red-700 font-medium">
-              Déconnexion
-            </button>
-          </div>
+        <div className="flex flex-col items-end">
+          <span className="text-xs text-slate-400 hidden sm:block">{user?.email}</span>
+          <button onClick={handleLogout} className="text-xs text-red-500 hover:text-red-700 font-medium">
+            Déconnexion
+          </button>
+        </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">Tableau de bord</h1>
-        <p className="text-gray-500 mb-8">Bienvenue sur FactoPro 👋</p>
-
-        {/* Stats Factures */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          {[
-            { label: 'Clients', value: stats.clients, icon: '👥', color: 'bg-blue-50 text-blue-600' },
-            { label: 'Factures', value: stats.factures, icon: '🧾', color: 'bg-green-50 text-green-600' },
-            { label: 'En attente', value: stats.en_attente, icon: '⏳', color: 'bg-yellow-50 text-yellow-600' },
-            { label: "Chiffre d'affaires", value: stats.total_ttc.toFixed(2)+' MAD', icon: '💰', color: 'bg-purple-50 text-purple-600' },
-          ].map(stat => (
-            <div key={stat.label} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-              <div className={`inline-flex items-center justify-center w-10 h-10 rounded-xl ${stat.color} text-xl mb-3`}>
-                {stat.icon}
-              </div>
-              <p className="text-2xl font-bold text-gray-900">{loading ? '...' : stat.value}</p>
-              <p className="text-gray-500 text-sm mt-1">{stat.label}</p>
-            </div>
-          ))}
+      {/* Banner image */}
+      <div className="relative h-32 overflow-hidden">
+        <img
+          src="https://images.unsplash.com/photo-1553413077-190dd305871c?w=1200&q=80"
+          alt="warehouse"
+          className="w-full h-full object-cover"
+          style={{ filter: 'brightness(0.55)' }}
+        />
+        <div className="absolute inset-0 flex flex-col justify-center px-5">
+          <h1 className="text-2xl font-bold text-white">Tableau de bord</h1>
+          <p className="text-slate-300 text-sm mt-1">Bienvenue sur FactoPro 👋</p>
         </div>
+      </div>
 
-        {/* Stats Ventes POS */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-6">
-          <h2 className="font-semibold text-gray-900 mb-4">Ventes POS</h2>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            {[
-              { label: "Ventes lyum", value: ventes.aujourd_hui },
-              { label: "CA lyum (MAD)", value: ventes.ca_jour },
-              { label: "Ventes shhar", value: ventes.mois },
-              { label: "CA shhar (MAD)", value: ventes.ca_mois },
-              { label: "Top produit", value: ventes.top_produit },
-            ].map(s => (
-              <div key={s.label} className="bg-gray-50 rounded-xl p-4 text-center">
-                <p className="text-xl font-bold text-gray-900">{loading ? '...' : s.value}</p>
-                <p className="text-xs text-gray-500 mt-1">{s.label}</p>
-              </div>
-            ))}
+      <div className="max-w-2xl mx-auto px-4 py-5">
+
+        {/* Stats grid */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+            <div className="text-xl mb-1">👥</div>
+            <div className="text-2xl font-bold text-blue-700">{loading ? '...' : stats.clients}</div>
+            <div className="text-xs text-slate-500 mt-1">Clients</div>
+          </div>
+          <div className="bg-green-50 border border-green-100 rounded-xl p-4">
+            <div className="text-xl mb-1">🧾</div>
+            <div className="text-2xl font-bold text-green-700">{loading ? '...' : stats.factures}</div>
+            <div className="text-xs text-slate-500 mt-1">Factures</div>
+          </div>
+          <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+            <div className="text-xl mb-1">⏳</div>
+            <div className="text-2xl font-bold text-amber-700">{loading ? '...' : stats.en_attente}</div>
+            <div className="text-xs text-slate-500 mt-1">En attente</div>
+          </div>
+          <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
+            <div className="text-xl mb-1">💰</div>
+            <div className="text-lg font-bold text-purple-700">{loading ? '...' : stats.total_ttc.toFixed(2)}</div>
+            <div className="text-xs text-slate-500 mt-1">CA (MAD)</div>
           </div>
         </div>
 
-        {/* Alertes Stock */}
-        {alertes.length > 0 && (
-          <div className="bg-white rounded-2xl p-6 shadow-sm border border-red-100 mb-6">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-xl">⚠️</span>
-              <h2 className="font-semibold text-red-600">Alertes Stock ({alertes.length})</h2>
+        {/* Ventes POS */}
+        <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4">
+          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">📊 Ventes POS</h2>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+              <div className="text-lg font-bold text-slate-800">{ventes.aujourd_hui}</div>
+              <div className="text-xs text-slate-400 mt-1">Ventes lyum</div>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+              <div className="text-lg font-bold text-slate-800">{ventes.ca_jour} MAD</div>
+              <div className="text-xs text-slate-400 mt-1">CA lyum (MAD)</div>
+            </div>
+            <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+              <div className="text-lg font-bold text-slate-800">{ventes.mois}</div>
+              <div className="text-xs text-slate-400 mt-1">Ventes shhar</div>
+            </div>
+            <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+              <div className="text-lg font-bold text-slate-800">{ventes.ca_mois} MAD</div>
+              <div className="text-xs text-slate-400 mt-1">CA shhar (MAD)</div>
+            </div>
+          </div>
+          {ventes.top_produit !== '—' && (
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-center gap-2">
+              <span className="text-lg">🏆</span>
+              <div>
+                <div className="text-sm font-semibold text-blue-700">{ventes.top_produit}</div>
+                <div className="text-xs text-slate-400">Top produit</div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Alertes stock */}
+        {alertes.length > 0 && (
+          <div className="bg-white border-l-4 border-amber-400 rounded-xl border border-amber-100 p-4 mb-4">
+            <h2 className="text-sm font-semibold text-amber-700 mb-3">⚠️ Alertes Stock ({alertes.length})</h2>
+            <div className="space-y-2">
               {alertes.map(p => (
-                <div key={p.nom} className={`rounded-xl p-3 text-center border ${
-                  p.quantite <= 0 
-                    ? 'bg-red-50 border-red-200' 
-                    : 'bg-amber-50 border-amber-200'}`}>
-                  <p className={`text-xl font-bold ${p.quantite <= 0 ? 'text-red-600' : 'text-amber-600'}`}>
-                    {p.quantite <= 0 ? 'KHLAS' : p.quantite+' '+p.unite}
-                  </p>
-                  <p className="text-xs text-gray-600 mt-1">{p.nom}</p>
+                <div key={p.nom} className="bg-amber-50 rounded-lg px-3 py-2 flex justify-between items-center border border-amber-100">
+                  <span className="text-sm text-amber-900 font-medium">{p.nom}</span>
+                  <span className="text-sm font-bold text-amber-600">{p.quantite} {p.unite}</span>
                 </div>
               ))}
             </div>
@@ -179,24 +193,28 @@ const [alertes, setAlertes] = useState([])
         )}
 
         {/* Actions rapides */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <h2 className="font-semibold text-gray-900 mb-4">Actions rapides</h2>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div>
+          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">⚡ Actions rapides</h2>
+          <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'Nouveau client', icon: '👤', href: '/clients' },
-              { label: 'Nouvelle facture', icon: '🧾', href: '/factures' },
-              { label: 'Point de Vente', icon: '🛒', href: '/pos' },
-              { label: 'Produits', icon: '📦', href: '/produits' },
-              { label: 'Paramètres', icon: '⚙️', href: '/settings' },
+              { label: 'Nouveau client', icon: '👤', href: '/clients', color: 'border-t-blue-500' },
+              { label: 'Nouvelle facture', icon: '🧾', href: '/factures', color: 'border-t-green-500' },
+              { label: 'Point de Vente', icon: '🛒', href: '/pos', color: 'border-t-purple-500' },
+              { label: 'Produits', icon: '📦', href: '/produits', color: 'border-t-amber-500' },
+              { label: 'Paramètres', icon: '⚙️', href: '/settings', color: 'border-t-pink-500' },
             ].map(action => (
-              <button key={action.label} onClick={() => router.push(action.href)}
-                className="flex items-center gap-3 p-4 border border-gray-200 rounded-xl hover:bg-indigo-50 hover:border-indigo-300 transition">
-                <span className="text-2xl">{action.icon}</span>
-                <span className="font-medium text-gray-700 text-sm">{action.label}</span>
+              <button
+                key={action.label}
+                onClick={() => router.push(action.href)}
+                className={`bg-white rounded-xl p-3 flex flex-col items-center border border-slate-200 border-t-2 ${action.color} hover:shadow-sm transition`}
+              >
+                <span className="text-xl mb-1">{action.icon}</span>
+                <span className="text-xs text-slate-600 font-medium text-center leading-tight">{action.label}</span>
               </button>
             ))}
           </div>
         </div>
+
       </div>
     </div>
   )
