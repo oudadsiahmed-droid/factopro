@@ -145,22 +145,22 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
             <div className="text-xl mb-1">👥</div>
-            <div className="text-2xl font-bold text-blue-700">{loading ? '...' : stats.clients}</div>
+            <div className="text-4xl font-bold text-blue-700">{loading ? '...' : stats.clients}</div>
             <div className="text-xs text-slate-500 mt-1">Clients</div>
           </div>
           <div className="bg-green-50 border border-green-100 rounded-xl p-4">
             <div className="text-xl mb-1">🧾</div>
-            <div className="text-2xl font-bold text-green-700">{loading ? '...' : stats.factures}</div>
+            <div className="text-4xl font-bold text-green-700">{loading ? '...' : stats.factures}</div>
             <div className="text-xs text-slate-500 mt-1">Factures</div>
           </div>
           <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
             <div className="text-xl mb-1">⏳</div>
-            <div className="text-2xl font-bold text-amber-700">{loading ? '...' : stats.en_attente}</div>
+            <div className="text-4xl font-bold text-amber-700">{loading ? '...' : stats.en_attente}</div>
             <div className="text-xs text-slate-500 mt-1">En attente</div>
           </div>
           <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
             <div className="text-xl mb-1">💰</div>
-            <div className="text-lg font-bold text-purple-700">{loading ? '...' : stats.total_ttc.toFixed(2)}</div>
+            <div className="text-4xl font-bold text-purple-700">{loading ? '...' : stats.total_ttc.toFixed(2)}</div>
             <div className="text-xs text-slate-500 mt-1">CA (MAD)</div>
           </div>
         </div>
