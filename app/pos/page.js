@@ -32,7 +32,6 @@ export default function POSPage() {
       .order('nom')
 
     setProduits(data || [])
-    console.log('DATA:', JSON.stringify(data?.[0]))console.log('Premier produit:', data?.[0])
     const cats = ['Tous', ...new Set((data || []).map(p => p.categorie).filter(Boolean))]
     setCategories(cats)
     setLoading(false)
@@ -49,21 +48,21 @@ export default function POSPage() {
     setPanier(prev => {
       const exist = prev.find(i => i.id === produit.id)
       if (exist) {
-        if (exist.quantite >= produit.quantite) return prev
-        return prev.map(i => i.id === produit.id ? { ...i, quantite: i.quantite + 1 } : i)
+        if (exist.qte >= produit.quantite) return prev
+        return prev.map(i => i.id === produit.id ? { ...i, qte: i.qte + 1 } : i)
       }
-      return [...prev, { ...produit, quantite: 1 }]
+      return [...prev, { ...produit, qte: 1 }]
     })
   }
 
   const modifierQte = (id, delta) => {
     setPanier(prev => prev
-      .map(i => i.id === id ? { ...i, quantite: i.quantite + delta } : i)
-      .filter(i => i.quantite > 0)
+      .map(i => i.id === id ? { ...i, qte: i.qte + delta } : i)
+      .filter(i => i.qte > 0)
     )
   }
 
-  const total = panier.reduce((s, i) => s + i.prix * i.quantite, 0)
+  const total = panier.reduce((s, i) => s + (Number(i.prix) || 0) * i.qte, 0)
 
   const encaisser = async () => {
     if (panier.length === 0) return
@@ -80,20 +79,23 @@ export default function POSPage() {
           vente_id: vente.id,
           produit_id: i.id,
           nom_produit: i.nom,
-          quantite: i.quantite,
+          quantite: i.qte,
           prix_unitaire: i.prix,
-          total: i.prix * i.quantite
+          total: (Number(i.prix) || 0) * i.qte
         }))
       )
 
       for (const item of panier) {
-        await supabase.from('produits')
-          .update({ quantite: produits.find(p => p.id === item.id)?.quantite - item.quantite })
-          .eq('id', item.id)
+        const prod = produits.find(p => p.id === item.id)
+        if (prod) {
+          await supabase.from('produits')
+            .update({ quantite: prod.quantite - item.qte })
+            .eq('id', item.id)
+        }
       }
 
       setPanier([])
-      alert(`✅ Vente enregistrée! Total: ${total.toFixed(2)} MAD`)
+      alert('Vente enregistree! Total: ' + total.toFixed(2) + ' MAD')
       init()
     } catch (e) {
       alert('Erreur lors de la vente')
@@ -104,37 +106,33 @@ export default function POSPage() {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', height: '100vh', fontFamily: 'sans-serif' }}>
 
-      {/* LEFT - Products */}
       <div style={{ background: '#F8FAFC', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
-        {/* Topbar */}
         <div style={{ background: '#1E293B', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 30, height: 30, background: '#2563EB', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 14 }}>F</div>
             <span style={{ fontSize: 14, fontWeight: 600, color: 'white' }}>Point de Vente</span>
           </div>
-          <button onClick={() => router.push('/dashboard')} style={{ fontSize: 12, color: '#94A3B8', background: 'none', border: 'none', cursor: 'pointer' }}>← Dashboard</button>
+          <button onClick={() => router.push('/dashboard')} style={{ fontSize: 12, color: '#94A3B8', background: 'none', border: 'none', cursor: 'pointer' }}>Dashboard</button>
         </div>
 
-        {/* Search */}
         <div style={{ padding: '10px 12px 4px' }}>
           <input
             ref={searchRef}
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="🔍 Chercher ou scanner code-barre..."
+            placeholder="Chercher ou scanner code-barre..."
             style={{ width: '100%', padding: '8px 12px', borderRadius: 10, border: '0.5px solid #E2E8F0', fontSize: 13, outline: 'none', background: 'white' }}
           />
         </div>
 
-        {/* Categories */}
         <div style={{ display: 'flex', gap: 6, padding: '6px 12px', overflowX: 'auto' }}>
           {categories.map(cat => (
             <button
               key={cat}
               onClick={() => setCategorieActive(cat)}
               style={{
-                padding: '5px 12px', borderRadius: 20, fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap', cursor: 'pointer', border: '0.5px solid',
+                padding: '5px 12px', borderRadius: 20, fontSize: 11, fontWeight: 500,
+                whiteSpace: 'nowrap', cursor: 'pointer', border: '0.5px solid',
                 background: categorieActive === cat ? '#1E40AF' : 'white',
                 color: categorieActive === cat ? 'white' : '#64748B',
                 borderColor: categorieActive === cat ? '#1E40AF' : '#E2E8F0'
@@ -145,7 +143,6 @@ export default function POSPage() {
           ))}
         </div>
 
-        {/* Products grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: '8px 12px', overflowY: 'auto', flex: 1 }}>
           {loading ? (
             <div style={{ gridColumn: 'span 3', textAlign: 'center', padding: '3rem', color: '#94A3B8' }}>Chargement...</div>
@@ -153,13 +150,13 @@ export default function POSPage() {
             <div
               key={p.id}
               onClick={() => ajouterAuPanier(p)}
-              style={{ background: 'white', borderRadius: 10, border: '0.5px solid #E2E8F0', padding: 10, cursor: 'pointer', transition: 'all 0.15s' }}
+              style={{ background: 'white', borderRadius: 10, border: '0.5px solid #E2E8F0', padding: 10, cursor: 'pointer' }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = '#93C5FD'; e.currentTarget.style.background = '#EFF6FF' }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.background = 'white' }}
             >
               <div style={{ fontSize: 9, color: '#94A3B8', fontWeight: 500, textTransform: 'uppercase' }}>{p.marque}</div>
               <div style={{ fontSize: 12, fontWeight: 600, color: '#1E293B', margin: '2px 0', lineHeight: 1.3 }}>{p.nom}</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#1D4ED8' }}>{p.prix} MAD</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#1D4ED8' }}>{Number(p.prix).toFixed(2)} MAD</div>
               <div style={{ fontSize: 10, color: Number(p.quantite) <= Number(p.alerte_stock) ? '#EF4444' : '#94A3B8', marginTop: 2 }}>
                 Stock: {p.quantite} {Number(p.quantite) <= Number(p.alerte_stock) ? '⚠️' : ''}
               </div>
@@ -168,29 +165,28 @@ export default function POSPage() {
         </div>
       </div>
 
-      {/* RIGHT - Cart */}
       <div style={{ background: '#1E293B', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.1)' }}>
-          <h2 style={{ fontSize: 14, fontWeight: 600, color: 'white' }}>🛒 Panier ({panier.length})</h2>
+          <h2 style={{ fontSize: 14, fontWeight: 600, color: 'white' }}>Panier ({panier.length})</h2>
         </div>
 
         <div style={{ flex: 1, padding: 12, overflowY: 'auto' }}>
           {panier.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#475569', fontSize: 12 }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>🛒</div>
-              Panier khawi — cliquez sur un produit
+              Panier khawi
             </div>
           ) : panier.map(item => (
             <div key={item.id} style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ fontSize: 11, color: '#CBD5E1', flex: 1 }}>{item.nom}</div>
-                <div style={{ fontSize: 12, color: '#60A5FA', fontWeight: 600 }}>{(item.prix * item.quantite).toFixed(2)} MAD</div>
+                <div style={{ fontSize: 12, color: '#60A5FA', fontWeight: 600 }}>{((Number(item.prix) || 0) * item.qte).toFixed(2)} MAD</div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                <button onClick={() => modifierQte(item.id, -1)} style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14 }}>−</button>
-                <span style={{ fontSize: 13, color: 'white', fontWeight: 600, minWidth: 20, textAlign: 'center' }}>{item.quantite}</span>
+                <button onClick={() => modifierQte(item.id, -1)} style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14 }}>-</button>
+                <span style={{ fontSize: 13, color: 'white', fontWeight: 600, minWidth: 20, textAlign: 'center' }}>{item.qte}</span>
                 <button onClick={() => modifierQte(item.id, 1)} style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14 }}>+</button>
-                <span style={{ fontSize: 11, color: '#64748B' }}>{item.prix} MAD/u</span>
+                <span style={{ fontSize: 11, color: '#64748B' }}>{Number(item.prix).toFixed(2)} MAD/u</span>
               </div>
             </div>
           ))}
@@ -199,7 +195,7 @@ export default function POSPage() {
         <div style={{ padding: '12px 16px', borderTop: '0.5px solid rgba(255,255,255,0.1)' }}>
           {panier.length > 0 && (
             <button onClick={() => setPanier([])} style={{ width: '100%', padding: '7px', marginBottom: 8, borderRadius: 8, background: 'rgba(239,68,68,0.15)', border: '0.5px solid rgba(239,68,68,0.3)', color: '#FCA5A5', fontSize: 12, cursor: 'pointer' }}>
-              🗑️ Vider le panier
+              Vider le panier
             </button>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -211,7 +207,7 @@ export default function POSPage() {
             disabled={panier.length === 0 || processing}
             style={{ width: '100%', padding: '12px', borderRadius: 10, background: panier.length === 0 ? '#334155' : '#2563EB', border: 'none', color: panier.length === 0 ? '#64748B' : 'white', fontSize: 14, fontWeight: 600, cursor: panier.length === 0 ? 'default' : 'pointer' }}
           >
-            {processing ? '⏳ Traitement...' : '💳 Encaisser'}
+            {processing ? 'Traitement...' : 'Encaisser'}
           </button>
         </div>
       </div>
