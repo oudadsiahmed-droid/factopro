@@ -259,7 +259,7 @@ export default function Dashboard() {
             {label:t.produits,href:'/produits'},{label:t.factures,href:'/factures'},
             {label:t.pointVente,href:'/pos'},{label:t.clients,href:'/clients'},
             {label:t.documents,href:'/documents'},{label:t.achats,href:'/achats'},
-            {label:t.inventaire,href:'/inventaire'},{label:'Assistant IA',href:'/assistant'},
+            {label:t.inventaire,href:'/inventaire'},{label:'Assistant IA',href:'/assistant'},{label:'Bilan',href:'/bilan'},
             {label:t.parametres,href:'/settings'},{label:'Profil',href:'/profile'}
           ].map(cat => (
             <button key={cat.label} onClick={() => router.push(cat.href)}
