@@ -50,7 +50,6 @@ export default function AdminPanel() {
           </div>
           <span style={{color:'#bfdbfe', fontSize:13}}>{users.length} users</span>
         </div>
-
         {users.map(u => {
           const expired = new Date(u.date_fin) < new Date()
           const daysLeft = Math.ceil((new Date(u.date_fin) - new Date()) / (1000*60*60*24))
@@ -60,34 +59,18 @@ export default function AdminPanel() {
             <div key={u.user_id} style={{background:'white', borderRadius:14, padding:16, marginBottom:12, border:`0.5px solid ${expired ? '#fca5a5' : warning ? '#fbbf24' : '#bfdbfe'}`}}>
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10}}>
                 <div>
-                  <div style={{fontSize:12, color:'#64748b', marginBottom:2}}>{u.user_id?.slice(0,8)}...</div>
+                  <div style={{fontSize:12, color:'#64748b'}}>{u.user_id?.slice(0,8)}...</div>
                   <div style={{fontSize:11, color:'#94a3b8'}}>Plan: {u.plan}</div>
                 </div>
                 <div style={{textAlign:'right'}}>
-                  <div style={{fontSize:12, fontWeight:700, color: expired ? '#dc2626' : '#10b981'}}>
-                    {expired ? '🔒 Expiré' : '✅ Actif'}
-                  </div>
-                  <div style={{fontSize:11, fontWeight: warning ? '700' : '400', color: warning ? '#dc2626' : '#94a3b8'}}>
-                    {warning ? '⚠️ ' : ''}{date}
-                  </div>
+                  <div style={{fontSize:12, fontWeight:700, color: expired ? '#dc2626' : '#10b981'}}>{expired ? '🔒 Expiré' : '✅ Actif'}</div>
+                  <div style={{fontSize:11, fontWeight: warning ? '700' : '400', color: warning ? '#dc2626' : '#94a3b8'}}>{warning ? '⚠️ ' : ''}{date}</div>
                 </div>
               </div>
               <div style={{display:'flex', gap:8}}>
-                <button onClick={() => addMonth(u.user_id)}
-                  style={{flex:1, padding:'8px 0', background:'#dbeafe', border:'none', borderRadius:8, color:'#1d4ed8', fontWeight:600, fontSize:13, cursor:'pointer'}}>
-                  +30 jours
-                </button>
-                <button onClick={() => {
-                  const msg = `Salam! ✅ FactoPro dyalek tjddt — khdm mzyan hta ${date}. Shukran! 😊`
-                  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`)
-                }}
-                  style={{flex:1, padding:'8px 0', background:'#dcfce7', border:'none', borderRadius:8, color:'#16a34a', fontWeight:600, fontSize:13, cursor:'pointer'}}>
-                  📱 WhatsApp
-                </button>
-                <button onClick={() => block(u.user_id)}
-                  style={{flex:1, padding:'8px 0', background: expired ? '#dcfce7' : '#fee2e2', border:'none', borderRadius:8, color: expired ? '#16a34a' : '#dc2626', fontWeight:600, fontSize:13, cursor:'pointer'}}>
-                  {expired ? '✅ Activer' : '🔒 Bloquer'}
-                </button>
+                <button onClick={() => addMonth(u.user_id)} style={{flex:1, padding:'8px 0', background:'#dbeafe', border:'none', borderRadius:8, color:'#1d4ed8', fontWeight:600, fontSize:13, cursor:'pointer'}}>+30 jours</button>
+                <button onClick={() => { const msg = `Salam! FactoPro dyalek tjddt hta ${date}. Shukran!`; window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`) }} style={{flex:1, padding:'8px 0', background:'#dcfce7', border:'none', borderRadius:8, color:'#16a34a', fontWeight:600, fontSize:13, cursor:'pointer'}}>📱 WhatsApp</button>
+                <button onClick={() => block(u.user_id)} style={{flex:1, padding:'8px 0', background: expired ? '#dcfce7' : '#fee2e2', border:'none', borderRadius:8, color: expired ? '#16a34a' : '#dc2626', fontWeight:600, fontSize:13, cursor:'pointer'}}>{expired ? '✅ Activer' : '🔒 Bloquer'}</button>
               </div>
             </div>
           )
