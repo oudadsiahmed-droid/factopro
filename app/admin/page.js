@@ -53,8 +53,11 @@ export default function AdminPanel() {
 
         {users.map(u => {
           const expired = new Date(u.date_fin) < new Date()
+          const daysLeft = Math.ceil((new Date(u.date_fin) - new Date()) / (1000*60*60*24))
+          const warning = !expired && daysLeft <= 2
+          const date = new Date(u.date_fin).toLocaleDateString('fr-MA')
           return (
-            <div key={u.user_id} style={{background:'white', borderRadius:14, padding:16, marginBottom:12, border:`0.5px solid ${expired ? '#fca5a5' : '#bfdbfe'}`}}>
+            <div key={u.user_id} style={{background:'white', borderRadius:14, padding:16, marginBottom:12, border:`0.5px solid ${expired ? '#fca5a5' : warning ? '#fbbf24' : '#bfdbfe'}`}}>
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10}}>
                 <div>
                   <div style={{fontSize:12, color:'#64748b', marginBottom:2}}>{u.user_id?.slice(0,8)}...</div>
@@ -64,8 +67,8 @@ export default function AdminPanel() {
                   <div style={{fontSize:12, fontWeight:700, color: expired ? '#dc2626' : '#10b981'}}>
                     {expired ? '🔒 Expiré' : '✅ Actif'}
                   </div>
-                  <div style={{fontSize:11, color: Math.ceil((new Date(u.date_fin)-new Date())/(1000*60*60*24)) <= 2 ? '#dc2626' : '#94a3b8', fontWeight: Math.ceil((new Date(u.date_fin)-new Date())/(1000*60*60*24)) <= 2 ? '700' : '400'}}>
-                    {Math.ceil((new Date(u.date_fin)-new Date())/(1000*60*60*24)) <= 2 && !expired ? '⚠️ ' : ''}{new Date(u.date_fin).toLocaleDateString('fr-MA')}
+                  <div style={{fontSize:11, fontWeight: warning ? '700' : '400', color: warning ? '#dc2626' : '#94a3b8'}}>
+                    {warning ? '⚠️ ' : ''}{date}
                   </div>
                 </div>
               </div>
@@ -73,6 +76,13 @@ export default function AdminPanel() {
                 <button onClick={() => addMonth(u.user_id)}
                   style={{flex:1, padding:'8px 0', background:'#dbeafe', border:'none', borderRadius:8, color:'#1d4ed8', fontWeight:600, fontSize:13, cursor:'pointer'}}>
                   +30 jours
+                </button>
+                <button onClick={() => {
+                  const msg = `Salam! ✅ FactoPro dyalek tjddt — khdm mzyan hta ${date}. Shukran! 😊`
+                  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`)
+                }}
+                  style={{flex:1, padding:'8px 0', background:'#dcfce7', border:'none', borderRadius:8, color:'#16a34a', fontWeight:600, fontSize:13, cursor:'pointer'}}>
+                  📱 WhatsApp
                 </button>
                 <button onClick={() => block(u.user_id)}
                   style={{flex:1, padding:'8px 0', background: expired ? '#dcfce7' : '#fee2e2', border:'none', borderRadius:8, color: expired ? '#16a34a' : '#dc2626', fontWeight:600, fontSize:13, cursor:'pointer'}}>
