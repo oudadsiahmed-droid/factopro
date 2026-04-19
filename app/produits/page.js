@@ -1,315 +1,351 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 
-const CATEGORIES_DEFAULT = ['Produits Menagers','Huile alimentaire','Farine et Sucre','Lait et Fromage','Biscuits','Boissons','Conserves','The et Cafe']
+const supabase = createClient()
 
 export default function Produits() {
-  const supabase = createClient()
+  const router = useRouter()
   const [produits, setProduits] = useState([])
-  const [categories, setCategories] = useState(CATEGORIES_DEFAULT)
+  const [categories, setCategories] = useState([])
+  const [search, setSearch] = useState('')
+  const [categorieActive, setCategorieActive] = useState('Tous')
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [showCatForm, setShowCatForm] = useState(false)
   const [editProduit, setEditProduit] = useState(null)
-  const [newCat, setNewCat] = useState('')
-  const [filterCat, setFilterCat] = useState('Tous')
-  const [filterMarque, setFilterMarque] = useState('Tous')
+  const [scanning, setScanning] = useState(false)
+  const [scanLoading, setScanLoading] = useState(false)
+  const [scanStatus, setScanStatus] = useState('')
   const [form, setForm] = useState({
-    nom:'',marque:'',prix:'',quantite:'',
-    alerte_stock:'5',unite:'unité',
-    code_barre:'',categorie:CATEGORIES_DEFAULT[0]
+    nom: '', marque: '', prix: '', prix_achat: '', quantite: '',
+    alerte_stock: '5', unite: 'unité', code_barre: '', categorie: ''
   })
+  const videoRef = useRef(null)
+  const streamRef = useRef(null)
 
-  useEffect(() => { fetchAll() }, [])
+  useEffect(() => { loadProduits() }, [])
 
-  async function fetchAll() {
-    const { data } = await supabase.from('produits').select('*').order('categorie')
+  const loadProduits = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { router.push('/'); return }
+    const { data } = await supabase.from('produits').select('*').eq('user_id', user.id).order('categorie')
     setProduits(data || [])
-    const cats = [...new Set((data||[]).map(p=>p.categorie).filter(Boolean))]
-    setCategories([...new Set([...CATEGORIES_DEFAULT,...cats])])
+    setCategories(['Tous', ...new Set((data || []).map(p => p.categorie).filter(Boolean))])
     setLoading(false)
   }
 
-  async function addProduit() {
-    if (!form.nom||!form.prix||!form.categorie){alert('Kml: nom, prix, w categorie');return}
-    const {data:{user}} = await supabase.auth.getUser()
-    const {error} = await supabase.from('produits').insert({
-      ...form,
-      prix:parseFloat(form.prix),
-      quantite:parseInt(form.quantite)||0,
-      alerte_stock:parseInt(form.alerte_stock)||5,
-      user_id:user.id
-    })
-    if(error){alert('Khta: '+error.message);return}
-    setForm({nom:'',marque:'',prix:'',quantite:'',alerte_stock:'5',unite:'unité',code_barre:'',categorie:categories[0]})
-    setShowForm(false)
-    fetchAll()
+  const startScan = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      streamRef.current = stream
+      setScanning(true)
+      setTimeout(() => { if (videoRef.current) videoRef.current.srcObject = stream }, 100)
+      if ('BarcodeDetector' in window) {
+        const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'code_128', 'code_39'] })
+        const interval = setInterval(async () => {
+          if (videoRef.current && videoRef.current.readyState === 4) {
+            try {
+              const barcodes = await detector.detect(videoRef.current)
+              if (barcodes.length > 0) {
+                clearInterval(interval)
+                stopScan()
+                await handleBarcode(barcodes[0].rawValue)
+              }
+            } catch (e) {}
+          }
+        }, 300)
+        streamRef.current._interval = interval
+      } else { alert('Scan non supporté. Utilisez Chrome.'); stopScan() }
+    } catch (e) { alert('Accès caméra refusé'); setScanning(false) }
   }
 
-  async function updateProduit() {
-    if(!editProduit) return
-    const {error} = await supabase.from('produits')
-      .update({
-        nom: editProduit.nom,
-        prix:parseFloat(editProduit.prix),
-        quantite:parseInt(editProduit.quantite),
-        alerte_stock:parseInt(editProduit.alerte_stock)
-      })
-      .eq('id',editProduit.id)
-    if(error){alert('Khta: '+error.message);return}
-    setEditProduit(null)
-    fetchAll()
+  const stopScan = () => {
+    if (streamRef.current) {
+      if (streamRef.current._interval) clearInterval(streamRef.current._interval)
+      streamRef.current.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+    }
+    setScanning(false)
   }
 
-  async function deleteProduit(id) {
-    if(!confirm('Wach hqq tbghi tmsah?')) return
-    await supabase.from('produits').delete().eq('id',id)
-    fetchAll()
+  const handleBarcode = async (code) => {
+    setScanLoading(true)
+    setScanStatus('🔍 Cherche dans votre stock...')
+    setForm(f => ({ ...f, code_barre: code }))
+    const { data: existing } = await supabase.from('produits').select('*').eq('code_barre', code).single()
+    if (existing) {
+      setForm({ nom: existing.nom, marque: existing.marque || '', prix: existing.prix, prix_achat: existing.prix_achat || '', quantite: existing.quantite, alerte_stock: existing.alerte_stock || 5, unite: existing.unite || 'unité', code_barre: code, categorie: existing.categorie || '' })
+      setScanLoading(false)
+      setScanStatus('✅ Produit trouvé dans votre stock!')
+      return
+    }
+    let nom = '', marque = '', categorie = ''
+    setScanStatus('🍕 Cherche dans Food Facts...')
+    try {
+      const r1 = await fetch(`https://world.openfoodfacts.org/api/v0/product/${code}.json`)
+      const d1 = await r1.json()
+      if (d1.status === 1 && d1.product?.product_name) {
+        const p = d1.product
+        nom = p.product_name_fr || p.product_name || ''
+        marque = p.brands?.split(',')[0]?.trim() || ''
+        categorie = p.categories?.split(',')[0]?.trim() || ''
+      }
+    } catch (e) {}
+    if (!nom) {
+      setScanStatus('📦 Cherche dans UPC Database...')
+      try {
+        const r4 = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${code}`)
+        const d4 = await r4.json()
+        if (d4.code === 'OK' && d4.items?.[0]) {
+          nom = d4.items[0].title || ''
+          marque = d4.items[0].brand || ''
+          categorie = d4.items[0].category || ''
+        }
+      } catch (e) {}
+    }
+    if (nom) {
+      setForm(f => ({ ...f, nom, marque, categorie, code_barre: code }))
+      setScanStatus('✅ Produit trouvé!')
+    } else {
+      setScanStatus('⚠️ Produit mkaynach — kteb lma3lomat yedwi')
+    }
+    setScanLoading(false)
   }
 
-  function addCategorie() {
-    if(!newCat.trim()) return
-    setCategories([...categories,newCat.trim()])
-    setForm({...form,categorie:newCat.trim()})
-    setNewCat('')
-    setShowCatForm(false)
+  const saveProduit = async () => {
+    if (!form.nom || !form.prix || !form.categorie) { alert('Kml: nom, prix, w categorie'); return }
+    const { data: { user } } = await supabase.auth.getUser()
+    const payload = {
+      nom: form.nom, marque: form.marque,
+      prix: parseFloat(form.prix),
+      prix_achat: parseFloat(form.prix_achat) || 0,
+      quantite: parseInt(form.quantite) || 0,
+      alerte_stock: parseInt(form.alerte_stock) || 5,
+      unite: form.unite, code_barre: form.code_barre, categorie: form.categorie
+    }
+    if (editProduit) {
+      await supabase.from('produits').update(payload).eq('id', editProduit.id)
+    } else {
+      await supabase.from('produits').insert({ ...payload, user_id: user.id })
+    }
+    setShowForm(false); setEditProduit(null); setScanStatus('')
+    setForm({ nom: '', marque: '', prix: '', prix_achat: '', quantite: '', alerte_stock: '5', unite: 'unité', code_barre: '', categorie: '' })
+    loadProduits()
+  }
+
+  const setEditFn = (p) => {
+    setEditProduit(p)
+    setForm({ nom: p.nom, marque: p.marque || '', prix: p.prix, prix_achat: p.prix_achat || '', quantite: p.quantite, alerte_stock: p.alerte_stock || 5, unite: p.unite || 'unité', code_barre: p.code_barre || '', categorie: p.categorie || '' })
+    setShowForm(true)
+  }
+
+  const deleteProduit = async (id) => {
+    if (!confirm('Supprimer ce produit?')) return
+    await supabase.from('produits').delete().eq('id', id)
+    loadProduits()
   }
 
   const produitsFiltres = produits.filter(p => {
-    const matchCat = filterCat==='Tous'||p.categorie===filterCat
-    const matchMarque = filterMarque==='Tous'||p.marque===filterMarque
-    return matchCat&&matchMarque
+    const matchCat = categorieActive === 'Tous' || p.categorie === categorieActive
+    const matchSearch = p.nom?.toLowerCase().includes(search.toLowerCase()) || p.marque?.toLowerCase().includes(search.toLowerCase())
+    return matchCat && matchSearch
   })
 
-  const marques = filterCat==='Tous'?[]:
-    [...new Set(produits.filter(p=>p.categorie===filterCat&&p.marque).map(p=>p.marque))].sort()
+  const stockTotal = produits.reduce((s, p) => s + (p.quantite || 0), 0)
+  const alertes = produits.filter(p => Number(p.quantite) <= Number(p.alerte_stock)).length
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-amber-50">
+      <nav className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center text-white font-bold text-sm">F</div>
+          <span className="font-semibold text-gray-900">FactoPro</span>
+        </div>
+        <button onClick={() => router.push('/dashboard')} className="text-sm text-blue-600 font-medium">← Dashboard</button>
+      </nav>
 
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">Gestion Produits</h1>
-          <div className="flex gap-2">
-            <button onClick={()=>setShowCatForm(!showCatForm)}
-              className="border border-gray-300 px-4 py-2 rounded-xl text-sm hover:bg-gray-50">
-              + Categorie
-            </button>
-            <button onClick={()=>setShowForm(!showForm)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-blue-700">
-              + Zid Produit
-            </button>
+      <div className="relative h-32 overflow-hidden">
+        <img src="https://images.unsplash.com/photo-1553413077-190dd305871c?w=1200&q=80" alt="warehouse" className="w-full h-full object-cover" style={{ filter: 'brightness(0.35)' }} />
+        <div className="absolute inset-0 flex items-center justify-between px-4">
+          <div>
+            <h1 className="text-xl font-bold text-white">Gestion Produits</h1>
+            <p className="text-slate-300 text-xs mt-0.5">{produits.length} produits au total</p>
+          </div>
+          <button onClick={() => { setShowForm(true); setEditProduit(null); setScanStatus(''); setForm({ nom:'',marque:'',prix:'',prix_achat:'',quantite:'',alerte_stock:'5',unite:'unité',code_barre:'',categorie:'' }) }}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition">
+            + Nouveau produit
+          </button>
+        </div>
+      </div>
+
+      <div className="px-4 py-5 max-w-2xl mx-auto">
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="bg-white rounded-xl border border-slate-200 p-3 text-center">
+            <div className="text-xl font-bold text-blue-700">{produits.length}</div>
+            <div className="text-xs text-slate-400 mt-0.5">Produits</div>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-3 text-center">
+            <div className="text-xl font-bold text-emerald-700">{stockTotal}</div>
+            <div className="text-xs text-slate-400 mt-0.5">Stock total</div>
+          </div>
+          <div className="bg-white rounded-xl border border-amber-200 p-3 text-center">
+            <div className="text-xl font-bold text-amber-600">{alertes}</div>
+            <div className="text-xs text-slate-400 mt-0.5">Alertes</div>
           </div>
         </div>
 
-        {/* Form Categorie */}
-        {showCatForm && (
-          <div className="bg-white border rounded-xl p-4 mb-4">
-            <p className="font-medium mb-3">Zid Categorie jdida</p>
-            <div className="flex gap-2">
-              <input type="text" placeholder="Smiyat categorie..."
-                value={newCat} onChange={e=>setNewCat(e.target.value)}
-                className="flex-1 border rounded-lg px-3 py-2 text-sm"/>
-              <button onClick={addCategorie}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">Zid</button>
-              <button onClick={()=>setShowCatForm(false)}
-                className="border px-4 py-2 rounded-lg text-sm">Annuler</button>
-            </div>
-          </div>
-        )}
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Rechercher un produit..."
+          className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3" />
 
-        {/* Form Edit */}
-        {editProduit && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-            <p className="font-medium mb-3">Edit: <span className="text-blue-600">{editProduit.nom}</span></p>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Nom</label>
-                <input type="text" value={editProduit.nom}
-                  onChange={e=>setEditProduit({...editProduit,nom:e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"/>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Prix (MAD)</label>
-                <input type="number" value={editProduit.prix}
-                  onChange={e=>setEditProduit({...editProduit,prix:e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"/>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Stock</label>
-                <input type="number" value={editProduit.quantite}
-                  onChange={e=>setEditProduit({...editProduit,quantite:e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"/>
-              </div>
-            </div>
-            <div className="flex gap-2 mt-3">
-              <button onClick={updateProduit}
-                className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-medium">
-                Sauvegarder
-              </button>
-              <button onClick={()=>setEditProduit(null)}
-                className="border px-6 py-2 rounded-xl text-sm">Annuler</button>
-            </div>
-          </div>
-        )}
-
-        {/* Form Zid Produit */}
-        {showForm && (
-          <div className="bg-white border rounded-xl p-4 mb-4">
-            <p className="font-medium mb-3">Zid Produit jdid</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Categorie</label>
-                <select value={form.categorie} onChange={e=>setForm({...form,categorie:e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 text-sm">
-                  {categories.map(c=><option key={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Marque</label>
-                <input type="text" placeholder="ex: Ariel, Tide..."
-                  value={form.marque} onChange={e=>setForm({...form,marque:e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"/>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Nom produit</label>
-                <input type="text" placeholder="ex: Ariel 1kg"
-                  value={form.nom} onChange={e=>setForm({...form,nom:e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"/>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Code-barre</label>
-                <input type="text" placeholder="ex: 6111001001"
-                  value={form.code_barre} onChange={e=>setForm({...form,code_barre:e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"/>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Prix (MAD)</label>
-                <input type="number" placeholder="ex: 36.00"
-                  value={form.prix} onChange={e=>setForm({...form,prix:e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"/>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Stock initial</label>
-                <input type="number" placeholder="ex: 50"
-                  value={form.quantite} onChange={e=>setForm({...form,quantite:e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"/>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Alerte stock</label>
-                <input type="number" placeholder="ex: 5"
-                  value={form.alerte_stock} onChange={e=>setForm({...form,alerte_stock:e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"/>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Unité</label>
-                <select value={form.unite} onChange={e=>setForm({...form,unite:e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2 text-sm">
-                  <option>unité</option>
-                  <option>kg</option>
-                  <option>L</option>
-                  <option>g</option>
-                  <option>ml</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button onClick={addProduit}
-                className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-medium">
-                Zid Produit
-              </button>
-              <button onClick={()=>setShowForm(false)}
-                className="border px-6 py-2 rounded-xl text-sm">Annuler</button>
-            </div>
-          </div>
-        )}
-
-        {/* Categories filter */}
-        <div className="flex gap-2 mb-3 flex-wrap">
-          <button onClick={()=>{setFilterCat('Tous');setFilterMarque('Tous')}}
-            className={`px-3 py-1 rounded-full text-sm border ${filterCat==='Tous'?'bg-blue-600 text-white border-blue-600':'bg-white'}`}>
-            Tous
-          </button>
-          {categories.map(c=>(
-            <button key={c} onClick={()=>{setFilterCat(c);setFilterMarque('Tous')}}
-              className={`px-3 py-1 rounded-full text-sm border ${filterCat===c?'bg-blue-600 text-white border-blue-600':'bg-white'}`}>
-              {c}
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+          {categories.map(cat => (
+            <button key={cat} onClick={() => setCategorieActive(cat)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition whitespace-nowrap flex-shrink-0 ${categorieActive === cat ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-slate-600 border-slate-200'}`}>
+              {cat}
             </button>
           ))}
         </div>
 
-        {/* Marques filter */}
-        {filterCat!=='Tous'&&marques.length>0&&(
-          <div className="flex gap-2 mb-3 flex-wrap bg-white p-2 rounded-lg border">
-            <button onClick={()=>setFilterMarque('Tous')}
-              className={`px-3 py-1 rounded-full text-sm border ${filterMarque==='Tous'?'bg-gray-800 text-white':'bg-gray-100'}`}>
-              Kol chi
-            </button>
-            {marques.map(m=>(
-              <button key={m} onClick={()=>setFilterMarque(m)}
-                className={`px-3 py-1 rounded-full text-sm border ${filterMarque===m?'bg-gray-800 text-white':'bg-gray-100'}`}>
-                {m}
-              </button>
-            ))}
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
           </div>
-        )}
-
-        {/* Table */}
-        <div className="bg-white rounded-xl border overflow-hidden">
-          {loading?(
-            <div className="p-8 text-center text-gray-400">Chargement...</div>
-          ):produitsFiltres.length===0?(
-            <div className="p-8 text-center text-gray-400">Ma kayn walo</div>
-          ):(
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  {['Produit','Marque','Categorie','Prix','Stock','Actions'].map(h=>(
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {produitsFiltres.map(p=>(
-                  <tr key={p.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-sm">{p.nom}</p>
-                      {p.code_barre&&<p className="text-xs text-gray-400">{p.code_barre}</p>}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{p.marque||'—'}</td>
-                    <td className="px-4 py-3">
-                      <span className="bg-blue-50 text-blue-700 text-xs px-2 py-1 rounded-full">{p.categorie}</span>
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-sm">{p.prix} MAD</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                        p.quantite<=0?'bg-red-100 text-red-600':
-                        p.quantite<=p.alerte_stock?'bg-amber-100 text-amber-700':
-                        'bg-green-100 text-green-700'}`}>
+        ) : produitsFiltres.length === 0 ? (
+          <div className="text-center py-16 text-slate-400 text-sm">Aucun produit trouvé</div>
+        ) : (
+          <div className="space-y-3">
+            {produitsFiltres.map(p => {
+              const empty = p.quantite <= 0
+              const low = !empty && Number(p.quantite) <= Number(p.alerte_stock)
+              const marge = p.prix_achat > 0 ? Number(p.prix) - Number(p.prix_achat) : null
+              const margePct = p.prix_achat > 0 ? (marge / Number(p.prix_achat) * 100).toFixed(0) : null
+              return (
+                <div key={p.id} className="bg-white rounded-2xl border border-slate-200 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-slate-800 text-sm">{p.nom}</div>
+                      {p.marque && <div className="text-xs text-slate-400">{p.marque}</div>}
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="font-bold text-slate-800">{Number(p.prix).toFixed(2)} MAD</div>
+                      {marge !== null && (
+                        <div className="text-xs text-emerald-600 font-semibold">+{marge.toFixed(2)} MAD ({margePct}%)</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <span className="bg-blue-50 text-blue-700 text-xs px-2 py-1 rounded-full border border-blue-100 font-medium">{p.categorie}</span>
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${empty ? 'bg-red-100 text-red-700' : low ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
                         {p.quantite} {p.unite}
                       </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-3">
-                        <button onClick={()=>setEditProduit(p)}
-                          className="text-blue-500 hover:text-blue-700 text-sm font-medium">
-                          Edit
-                        </button>
-                        <button onClick={()=>deleteProduit(p.id)}
-                          className="text-red-500 hover:text-red-700 text-sm">
-                          Supprimer
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-        <p className="text-xs text-gray-400 mt-3 text-right">{produitsFiltres.length} produits</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setEditFn(p)} className="text-xs text-blue-600 font-semibold bg-blue-50 px-3 py-1.5 rounded-lg">✏️</button>
+                      <button onClick={() => deleteProduit(p.id)} className="text-xs text-red-500 font-semibold bg-red-50 px-3 py-1.5 rounded-lg">🗑️</button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
+
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-5 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
+            <h2 className="text-base font-semibold text-slate-800 mb-4">
+              {editProduit ? '✏️ Modifier produit' : '➕ Nouveau produit'}
+            </h2>
+            {!editProduit && (
+              <div className="mb-4">
+                <button onClick={scanning ? stopScan : startScan}
+                  className={`w-full py-3 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 ${scanning ? 'bg-red-500 text-white' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
+                  {scanning ? '⏹ Arrêter scan' : '📷 Scanner le code-barre'}
+                </button>
+                {scanLoading && <div className="text-center mt-2 text-xs text-blue-600">{scanStatus}</div>}
+                {!scanLoading && scanStatus && <div className="text-center mt-2 text-xs font-medium text-slate-600">{scanStatus}</div>}
+              </div>
+            )}
+            {scanning && (
+              <div className="mb-4 rounded-xl overflow-hidden relative bg-black" style={{ height: 180 }}>
+                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="w-48 h-16 border-2 border-blue-400 rounded-lg" />
+                </div>
+              </div>
+            )}
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1 font-medium">Nom *</label>
+                  <input value={form.nom} onChange={e => setForm({...form, nom: e.target.value})} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1 font-medium">Marque</label>
+                  <input value={form.marque} onChange={e => setForm({...form, marque: e.target.value})} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1 font-medium">💰 Prix achat (MAD)</label>
+                  <input type="number" value={form.prix_achat} onChange={e => setForm({...form, prix_achat: e.target.value})} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="ex: 3.50" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1 font-medium">🏷️ Prix vente (MAD) *</label>
+                  <input type="number" value={form.prix} onChange={e => setForm({...form, prix: e.target.value})} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+              {form.prix && form.prix_achat && Number(form.prix_achat) > 0 && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2 text-sm font-semibold text-emerald-700">
+                  📈 Marge: {(Number(form.prix) - Number(form.prix_achat)).toFixed(2)} MAD — {((Number(form.prix) - Number(form.prix_achat)) / Number(form.prix_achat) * 100).toFixed(0)}%
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1 font-medium">Catégorie *</label>
+                  <input value={form.categorie} onChange={e => setForm({...form, categorie: e.target.value})} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1 font-medium">Quantité</label>
+                  <input type="number" value={form.quantite} onChange={e => setForm({...form, quantite: e.target.value})} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1 font-medium">Alerte stock</label>
+                  <input type="number" value={form.alerte_stock} onChange={e => setForm({...form, alerte_stock: e.target.value})} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1 font-medium">Unité</label>
+                  <select value={form.unite} onChange={e => setForm({...form, unite: e.target.value})} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="unité">unité</option>
+                    <option value="kg">kg</option>
+                    <option value="g">g</option>
+                    <option value="L">L</option>
+                    <option value="ml">ml</option>
+                    <option value="boîte">boîte</option>
+                    <option value="sachet">sachet</option>
+                    <option value="carton">carton</option>
+                    <option value="pièce">pièce</option>
+                    <option value="paire">paire</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 block mb-1 font-medium">Code barre</label>
+                <input value={form.code_barre} onChange={e => setForm({...form, code_barre: e.target.value})} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="6111..." />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => { setShowForm(false); setEditProduit(null); stopScan(); setScanStatus('') }} className="flex-1 border border-slate-200 text-slate-600 py-2.5 rounded-xl text-sm font-medium">Annuler</button>
+              <button onClick={saveProduit} className="flex-1 bg-blue-700 hover:bg-blue-800 text-white py-2.5 rounded-xl text-sm font-semibold">Enregistrer</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

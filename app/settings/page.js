@@ -1,18 +1,19 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
-import { createClient } from '@/lib/supabase'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase'
+
+const supabase = createClient()
 
 export default function Settings() {
   const [form, setForm] = useState({
     entreprise: '', slogan: '', adresse: '', ville: '',
     telephone: '', email: '', ice: '', rc: '', if_num: '',
-    couleur: '#4f46e5', logo: ''
+    rib: '', couleur: '#4f46e5', logo: ''
   })
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
   const fileRef = useRef()
-  const supabase = createClient()
   const router = useRouter()
 
   useEffect(() => { loadSettings() }, [])
@@ -25,17 +26,24 @@ export default function Settings() {
     setLoading(false)
   }
 
-  const handleLogo = (e) => {
+  const handleLogo = async (e) => {
     const file = e.target.files[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => setForm(f => ({ ...f, logo: ev.target.result }))
-    reader.readAsDataURL(file)
+    const { data: { user } } = await supabase.auth.getUser()
+    const filePath = `${user.id}/logo_${Date.now()}.${file.name.split('.').pop()}`
+    const { error } = await supabase.storage.from('documents').upload(filePath, file, { upsert: true })
+    if (error) { alert('Erreur upload logo: ' + error.message); return }
+    const { data } = supabase.storage.from('documents').getPublicUrl(filePath)
+    setForm(f => ({ ...f, logo: data.publicUrl }))
   }
 
   const saveSettings = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    localStorage.setItem(`factopro_settings_${user.id}`, JSON.stringify(form))
+    const formToSave = { ...form }
+    if (formToSave.logo && formToSave.logo.startsWith('data:')) {
+      formToSave.logo = ''
+    }
+    localStorage.setItem(`factopro_settings_${user.id}`, JSON.stringify(formToSave))
     setSaved(true)
     setTimeout(() => setSaved(false), 3000)
   }
@@ -62,45 +70,6 @@ export default function Settings() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">⚙️ Paramètres</h1>
           <p className="text-gray-500 mt-1">Ces informations apparaîtront sur vos factures</p>
-        </div>
-
-        {/* Preview */}
-        <div className="rounded-2xl overflow-hidden shadow-lg mb-8 border">
-          <div className="p-6 text-white" style={{ backgroundColor: form.couleur }}>
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-4">
-                {form.logo && (
-                  <img src={form.logo} className="w-16 h-16 rounded-xl object-cover bg-white p-1" />
-                )}
-                <div>
-                  <h2 className="text-2xl font-bold">{form.entreprise || 'Nom Entreprise'}</h2>
-                  <p className="text-white/80 text-sm mt-1">{form.slogan || 'Votre slogan ici'}</p>
-                </div>
-              </div>
-              <div className="text-right text-sm text-white/80">
-                <p>FAC-000001</p>
-                <p>{new Date().toLocaleDateString('fr-MA')}</p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white p-6">
-            <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
-              <div>
-                <p className="font-semibold text-gray-800 mb-1">Émetteur</p>
-                <p>{form.entreprise || '—'}</p>
-                <p>{form.adresse || '—'}</p>
-                <p>{form.ville || '—'}</p>
-                <p>{form.telephone || '—'}</p>
-                <p>{form.email || '—'}</p>
-              </div>
-              <div>
-                <p className="font-semibold text-gray-800 mb-1">Informations légales</p>
-                {form.ice && <p>ICE: {form.ice}</p>}
-                {form.rc && <p>RC: {form.rc}</p>}
-                {form.if_num && <p>IF: {form.if_num}</p>}
-              </div>
-            </div>
-          </div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border p-6 space-y-6">
@@ -144,6 +113,7 @@ export default function Settings() {
                 { key: 'ville', label: 'Ville', placeholder: 'Ex: Casablanca' },
                 { key: 'telephone', label: 'Téléphone', placeholder: 'Ex: 0522-123456' },
                 { key: 'email', label: 'Email', placeholder: 'Ex: contact@masociete.ma' },
+                { key: 'rib', label: 'RIB', placeholder: 'Ex: 123456789' },
               ].map(f => (
                 <div key={f.key}>
                   <label className="block text-sm font-medium text-gray-700 mb-1">{f.label}</label>
