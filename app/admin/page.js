@@ -64,8 +64,8 @@ export default function AdminPanel() {
                   <div style={{fontSize:12, fontWeight:700, color: expired ? '#dc2626' : '#10b981'}}>
                     {expired ? '🔒 Expiré' : '✅ Actif'}
                   </div>
-                  <div style={{fontSize:11, color:'#94a3b8'}}>
-                    {new Date(u.date_fin).toLocaleDateString('fr-MA')}
+                  <div style={{fontSize:11, color: Math.ceil((new Date(u.date_fin)-new Date())/(1000*60*60*24)) <= 2 ? '#dc2626' : '#94a3b8', fontWeight: Math.ceil((new Date(u.date_fin)-new Date())/(1000*60*60*24)) <= 2 ? '700' : '400'}}>
+                    {Math.ceil((new Date(u.date_fin)-new Date())/(1000*60*60*24)) <= 2 && !expired ? '⚠️ ' : ''}{new Date(u.date_fin).toLocaleDateString('fr-MA')}
                   </div>
                 </div>
               </div>
